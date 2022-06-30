@@ -98,7 +98,7 @@ class TrainLoop:
             self.use_ddp = True
             rank = dist.get_rank()
             self.ddp_model = DDP(
-                self.model,device_ids=[rank]
+                self.model.cuda(),device_ids=[rank]
             )
         else:
             if dist.get_world_size() > 1:
