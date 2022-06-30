@@ -134,7 +134,7 @@ class TrainLoop:
             logger.log(f"loading model from checkpoint: {load_checkpoint}...")
             self.model.load_state_dict(
                 th.load(
-                    load_checkpoint, map_location=dist_util.dev()
+                    load_checkpoint, map_location='cpu'
                 )
             )
 
@@ -260,7 +260,7 @@ class TrainLoop:
                 with bf.BlobFile(bf.join(get_blob_logdir(), filename), "wb") as f:
                     th.save(state_dict, f)
 
-        with torch.no_grad():
+        with th.no_grad():
             sample_fn = self.diffusion.p_sample_loop
             sample = sample_fn(
                 self.model,
