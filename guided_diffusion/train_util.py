@@ -96,8 +96,9 @@ class TrainLoop:
 
         if th.cuda.is_available():
             self.use_ddp = True
+            rank = dist.get_rank()
             self.ddp_model = DDP(
-                self.model
+                self.model,device_ids=[rank]
             )
         else:
             if dist.get_world_size() > 1:
