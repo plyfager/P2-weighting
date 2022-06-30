@@ -7,5 +7,5 @@ torchrun --nproc_per_node=$GPUS scripts/image_train.py \
 --use_scale_shift_norm True --lr 2e-5 --batch_size 8 \
 --rescale_learned_sigmas True --p2_gamma 1 --p2_k 1 \
 --log_dir logs --batch_size 8 \
---load_checkpoint ~/Downloads/ffhq_baseline.pt
+--load_checkpoint ./weights/ffhq_baseline.pt
 # --save_interval 1 
