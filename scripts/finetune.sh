@@ -1,4 +1,4 @@
-torchrun scripts/image_train.py \
+torchrun --nproc_per_node=$GPUS scripts/image_train.py \
 --data_dir /data/images --attention_resolutions 16 \
 --class_cond False --diffusion_steps 1000 \
 --dropout 0.0 --image_size 256 --learn_sigma True \

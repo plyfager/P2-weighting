@@ -68,7 +68,7 @@ class TrainLoop:
 
         self.sync_cuda = th.cuda.is_available()
 
-        self._load_and_sync_parameters()
+        # self._load_and_sync_parameters()
         
         self._finetune_load_and_sync_parameters()
         
@@ -134,15 +134,15 @@ class TrainLoop:
         load_checkpoint = self.load_checkpoint
 
         if load_checkpoint:
-            if dist.get_rank() == 0:
-                logger.log(f"loading model from checkpoint: {load_checkpoint}...")
-                self.model.load_state_dict(
-                    th.load(
-                        load_checkpoint, map_location=dist_util.dev()
-                    )
+            # if dist.get_rank() == 0:
+            logger.log(f"loading model from checkpoint: {load_checkpoint}...")
+            self.model.load_state_dict(
+                th.load(
+                    load_checkpoint, map_location=dist_util.dev()
                 )
+            )
 
-        dist_util.sync_params(self.model.parameters())
+        # dist_util.sync_params(self.model.parameters())
         
     def _load_ema_parameters(self, rate):
         ema_params = copy.deepcopy(self.mp_trainer.master_params)
