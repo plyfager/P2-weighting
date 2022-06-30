@@ -132,11 +132,16 @@ class TrainLoop:
         if load_checkpoint:
             # if dist.get_rank() == 0:
             logger.log(f"loading model from checkpoint: {load_checkpoint}...")
-            self.model.load_state_dict(
-                th.load(
-                    load_checkpoint, map_location='cpu'
-                )
+            
+        # configure map_location properly
+        rank = dist.get_rank()
+        map_location = {'cuda:%d' % 0: 'cuda:%d' % rank}
+        
+        self.model.load_state_dict(
+            th.load(
+                load_checkpoint, map_location=map_location
             )
+        )
 
         # dist_util.sync_params(self.model.parameters())
         
