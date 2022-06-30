@@ -12,7 +12,7 @@ from . import dist_util, logger
 from .fp16_util import MixedPrecisionTrainer
 from .nn import update_ema
 from .resample import LossAwareSampler, UniformSampler
-
+from torchvision.utils import save_image
 # For ImageNet experiments, this was a good default value.
 # We found that the lg_loss_scale quickly climbed to
 # 20-21 within the first ~1K steps of training.
@@ -33,11 +33,13 @@ class TrainLoop:
         log_interval,
         save_interval,
         resume_checkpoint,
+        load_checkpoint="",
         use_fp16=False,
         fp16_scale_growth=1e-3,
         schedule_sampler=None,
         weight_decay=0.0,
         lr_anneal_steps=0,
+        image_size=0
     ):
         self.model = model
         self.diffusion = diffusion
@@ -53,6 +55,7 @@ class TrainLoop:
         self.log_interval = log_interval
         self.save_interval = save_interval
         self.resume_checkpoint = resume_checkpoint
+        self.load_checkpoint = load_checkpoint
         self.use_fp16 = use_fp16
         self.fp16_scale_growth = fp16_scale_growth
         self.schedule_sampler = schedule_sampler or UniformSampler(diffusion)
@@ -66,6 +69,9 @@ class TrainLoop:
         self.sync_cuda = th.cuda.is_available()
 
         self._load_and_sync_parameters()
+        
+        self._finetune_load_and_sync_parameters()
+        
         self.mp_trainer = MixedPrecisionTrainer(
             model=self.model,
             use_fp16=self.use_fp16,
@@ -107,6 +113,8 @@ class TrainLoop:
             self.use_ddp = False
             self.ddp_model = self.model
 
+        self.image_size = image_size
+        
     def _load_and_sync_parameters(self):
         resume_checkpoint = find_resume_checkpoint() or self.resume_checkpoint
 
@@ -122,6 +130,20 @@ class TrainLoop:
 
         dist_util.sync_params(self.model.parameters())
 
+    def _finetune_load_and_sync_parameters(self):
+        load_checkpoint = self.load_checkpoint
+
+        if load_checkpoint:
+            if dist.get_rank() == 0:
+                logger.log(f"loading model from checkpoint: {load_checkpoint}...")
+                self.model.load_state_dict(
+                    th.load(
+                        load_checkpoint, map_location=dist_util.dev()
+                    )
+                )
+
+        dist_util.sync_params(self.model.parameters())
+        
     def _load_ema_parameters(self, rate):
         ema_params = copy.deepcopy(self.mp_trainer.master_params)
 
@@ -167,6 +189,7 @@ class TrainLoop:
             self.step += 1
         # Save the last checkpoint if it wasn't already saved.
         if (self.step - 1) % self.save_interval != 0:
+            logger.log(f"Saving at step {self.step}")
             self.save()
 
     def run_step(self, batch, cond):
@@ -241,6 +264,18 @@ class TrainLoop:
                 with bf.BlobFile(bf.join(get_blob_logdir(), filename), "wb") as f:
                     th.save(state_dict, f)
 
+        with torch.no_grad():
+            sample_fn = self.diffusion.p_sample_loop
+            sample = sample_fn(
+                self.model,
+                (self.batch_size, 3, self.image_size, self.image_size),
+                clip_denoised=True,
+                model_kwargs={},
+            )
+            os.makedirs(os.path.join(get_blob_logdir(),'images'), exist_ok=True)
+            image_path = os.path.join(get_blob_logdir(),'images',  f"{(self.step+self.resume_step):06d}.png")
+            save_image(sample, image_path)
+        # saving images        
         save_checkpoint(0, self.mp_trainer.master_params)
         for rate, params in zip(self.ema_rate, self.ema_params):
             save_checkpoint(rate, params)

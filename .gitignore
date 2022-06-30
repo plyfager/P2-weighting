@@ -1,0 +1,6 @@
+*.pyc
+*.png
+*.pt
+samples/
+logs/
+*.egg-info
