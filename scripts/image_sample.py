@@ -34,7 +34,7 @@ def main():
     model.load_state_dict(
         th.load(args.model_path, map_location="cpu")
     )
-    model.to(dist_util.dev())
+    model.to(dist.get_rank())
     if args.use_fp16:
         model.convert_to_fp16()
     model.eval()
@@ -47,7 +47,7 @@ def main():
         model_kwargs = {}
         if args.class_cond:
             classes = th.randint(
-                low=0, high=NUM_CLASSES, size=(args.batch_size,), device=dist_util.dev()
+                low=0, high=NUM_CLASSES, size=(args.batch_size,), device=dist.get_rank()
             )
             model_kwargs["y"] = classes
         sample_fn = (

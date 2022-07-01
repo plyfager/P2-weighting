@@ -31,7 +31,7 @@ def main():
     model.load_state_dict(
         dist_util.load_state_dict(args.model_path, map_location="cpu")
     )
-    model.to(dist_util.dev())
+    model.to(dist.get_rank())
     model.eval()
 
     logger.log("creating data loader...")
@@ -53,8 +53,8 @@ def run_bpd_evaluation(model, diffusion, data, num_samples, clip_denoised):
     num_complete = 0
     while num_complete < num_samples:
         batch, model_kwargs = next(data)
-        batch = batch.to(dist_util.dev())
-        model_kwargs = {k: v.to(dist_util.dev()) for k, v in model_kwargs.items()}
+        batch = batch.to(dist.get_rank())
+        model_kwargs = {k: v.to(dist.get_rank()) for k, v in model_kwargs.items()}
         minibatch_metrics = diffusion.calc_bpd_loop(
             model, batch, clip_denoised=clip_denoised, model_kwargs=model_kwargs
         )

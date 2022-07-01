@@ -14,7 +14,7 @@ from guided_diffusion.script_util import (
     add_dict_to_argparser,
 )
 from guided_diffusion.train_util import TrainLoop
-
+import torch.distributed as dist
 
 def main():
     args = create_argparser().parse_args()
@@ -26,7 +26,10 @@ def main():
     model, diffusion = create_model_and_diffusion(
         **args_to_dict(args, model_and_diffusion_defaults().keys())
     )
-    model.to(dist_util.dev())
+
+    rank = dist.get_rank()
+    model.to(rank)
+
     schedule_sampler = create_named_schedule_sampler(args.schedule_sampler, diffusion)
 
     logger.log("creating data loader...")

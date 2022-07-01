@@ -88,7 +88,7 @@ class ImageDataset(Dataset):
         shard=0,
         num_shards=1,
         random_crop=False,
-        random_flip=True,
+        random_flip=True
     ):
         super().__init__()
         self.resolution = resolution
@@ -118,7 +118,8 @@ class ImageDataset(Dataset):
         arr = arr.astype(np.float32) / 127.5 - 1
 
         out_dict = {}
-        if self.local_classes is not None:
+        
+        if self.local_classes is not None :
             out_dict["y"] = np.array(self.local_classes[idx], dtype=np.int64)
         return np.transpose(arr, [2, 0, 1]), out_dict
 

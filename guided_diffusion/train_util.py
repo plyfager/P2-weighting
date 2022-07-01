@@ -13,6 +13,7 @@ from .fp16_util import MixedPrecisionTrainer
 from .nn import update_ema
 from .resample import LossAwareSampler, UniformSampler
 from torchvision.utils import save_image
+import numpy as np
 # For ImageNet experiments, this was a good default value.
 # We found that the lg_loss_scale quickly climbed to
 # 20-21 within the first ~1K steps of training.
@@ -96,8 +97,9 @@ class TrainLoop:
 
         if th.cuda.is_available():
             self.use_ddp = True
+            rank = dist.get_rank()
             self.ddp_model = DDP(
-                self.model, device_ids=[0,1]
+                self.model.to(rank), device_ids=[rank]
             )
         else:
             if dist.get_world_size() > 1:
@@ -119,7 +121,7 @@ class TrainLoop:
                 logger.log(f"loading model from checkpoint: {resume_checkpoint}...")
                 self.model.load_state_dict(
                     dist_util.load_state_dict(
-                        resume_checkpoint, map_location=dist_util.dev()
+                        resume_checkpoint, map_location=dist.get_rank()
                     )
                 )
 
@@ -139,7 +141,8 @@ class TrainLoop:
         self.model.load_state_dict(
             th.load(
                 load_checkpoint
-            )
+            ),
+            strict=False
         )
 
         # dist_util.sync_params(self.model.parameters())
@@ -153,7 +156,7 @@ class TrainLoop:
             if dist.get_rank() == 0:
                 logger.log(f"loading EMA from checkpoint: {ema_checkpoint}...")
                 state_dict = dist_util.load_state_dict(
-                    ema_checkpoint, map_location=dist_util.dev()
+                    ema_checkpoint, map_location=dist.get_rank()
                 )
                 ema_params = self.mp_trainer.state_dict_to_master_params(state_dict)
 
@@ -168,11 +171,14 @@ class TrainLoop:
         if bf.exists(opt_checkpoint):
             logger.log(f"loading optimizer state from checkpoint: {opt_checkpoint}")
             state_dict = dist_util.load_state_dict(
-                opt_checkpoint, map_location=dist_util.dev()
+                opt_checkpoint, map_location=dist.get_rank()
             )
             self.opt.load_state_dict(state_dict)
 
     def run_loop(self):
+        if dist.get_rank() == 0:
+            from tqdm import tqdm
+            pbar = tqdm(total=self.lr_anneal_steps)
         while (
             not self.lr_anneal_steps
             or self.step + self.resume_step < self.lr_anneal_steps
@@ -187,6 +193,9 @@ class TrainLoop:
                 if os.environ.get("DIFFUSION_TRAINING_TEST", "") and self.step > 0:
                     return
             self.step += 1
+            if dist.get_rank() == 0:
+                pbar.update(1)
+        pbar.close()
         # Save the last checkpoint if it wasn't already saved.
         if (self.step - 1) % self.save_interval != 0:
             logger.log(f"Saving at step {self.step}")
@@ -203,14 +212,17 @@ class TrainLoop:
     def forward_backward(self, batch, cond):
         self.mp_trainer.zero_grad()
         for i in range(0, batch.shape[0], self.microbatch):
-            micro = batch[i : i + self.microbatch].to(dist_util.dev())
+            micro = batch[i : i + self.microbatch].to(dist.get_rank())
             micro_cond = {
-                k: v[i : i + self.microbatch].to(dist_util.dev())
+                k: v[i : i + self.microbatch].to(dist.get_rank())
                 for k, v in cond.items()
             }
             last_batch = (i + self.microbatch) >= batch.shape[0]
-            t, weights = self.schedule_sampler.sample(micro.shape[0], dist_util.dev())
-
+            t, weights = self.schedule_sampler.sample(micro.shape[0], dist.get_rank())
+            
+            if np.random.rand()< 0.2:
+                micro_cond = {}
+                
             compute_losses = functools.partial(
                 self.diffusion.training_losses,
                 self.ddp_model,

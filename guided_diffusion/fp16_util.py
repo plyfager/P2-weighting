@@ -180,6 +180,29 @@ class MixedPrecisionTrainer:
         else:
             loss.backward()
 
+            parameters_in_graph = set()
+            visited = set()
+
+            def traverse(grad_fn):
+                if grad_fn is None:
+                    return
+                if grad_fn not in visited:
+                    visited.add(grad_fn)
+                    if hasattr(grad_fn, 'variable'):
+                        parameters_in_graph.add(grad_fn.variable)
+                    parents = grad_fn.next_functions
+                    if parents is not None:
+                        for parent in parents:
+                            grad_fn = parent[0]
+                            traverse(grad_fn)
+
+            traverse(loss.grad_fn)
+            for n, p in self.model.named_parameters():
+                if p not in parameters_in_graph and p.requires_grad:
+                    print(f'{n} with shape {p.size()} is not '
+                        f'in the computational graph \n',flush=True)
+
+
     def optimize(self, opt: th.optim.Optimizer):
         if self.use_fp16:
             return self._optimize_fp16(opt)

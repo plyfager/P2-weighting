@@ -35,7 +35,7 @@ def main():
     model, diffusion = create_classifier_and_diffusion(
         **args_to_dict(args, classifier_and_diffusion_defaults().keys())
     )
-    model.to(dist_util.dev())
+    model.to(dist.get_rank())
     if args.noised:
         schedule_sampler = create_named_schedule_sampler(
             args.schedule_sampler, diffusion
@@ -50,7 +50,7 @@ def main():
             )
             model.load_state_dict(
                 dist_util.load_state_dict(
-                    args.resume_checkpoint, map_location=dist_util.dev()
+                    args.resume_checkpoint, map_location=dist.get_rank()
                 )
             )
 
@@ -63,8 +63,8 @@ def main():
 
     model = DDP(
         model,
-        device_ids=[dist_util.dev()],
-        output_device=dist_util.dev(),
+        device_ids=[dist.get_rank()],
+        output_device=dist.get_rank(),
         broadcast_buffers=False,
         bucket_cap_mb=128,
         find_unused_parameters=False,
@@ -96,22 +96,22 @@ def main():
         )
         logger.log(f"loading optimizer state from checkpoint: {opt_checkpoint}")
         opt.load_state_dict(
-            dist_util.load_state_dict(opt_checkpoint, map_location=dist_util.dev())
+            dist_util.load_state_dict(opt_checkpoint, map_location=dist.get_rank())
         )
 
     logger.log("training classifier model...")
 
     def forward_backward_log(data_loader, prefix="train"):
         batch, extra = next(data_loader)
-        labels = extra["y"].to(dist_util.dev())
+        labels = extra["y"].to(dist.get_rank())
 
-        batch = batch.to(dist_util.dev())
+        batch = batch.to(dist.get_rank())
         # Noisy images
         if args.noised:
-            t, _ = schedule_sampler.sample(batch.shape[0], dist_util.dev())
+            t, _ = schedule_sampler.sample(batch.shape[0], dist.get_rank())
             batch = diffusion.q_sample(batch, t)
         else:
-            t = th.zeros(batch.shape[0], dtype=th.long, device=dist_util.dev())
+            t = th.zeros(batch.shape[0], dtype=th.long, device=dist.get_rank())
 
         for i, (sub_batch, sub_labels, sub_t) in enumerate(
             split_microbatches(args.microbatch, batch, labels, t)

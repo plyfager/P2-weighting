@@ -36,7 +36,7 @@ def main():
     model.load_state_dict(
         dist_util.load_state_dict(args.model_path, map_location="cpu")
     )
-    model.to(dist_util.dev())
+    model.to(dist.get_rank())
     if args.use_fp16:
         model.convert_to_fp16()
     model.eval()
@@ -46,7 +46,7 @@ def main():
     classifier.load_state_dict(
         dist_util.load_state_dict(args.classifier_path, map_location="cpu")
     )
-    classifier.to(dist_util.dev())
+    classifier.to(dist.get_rank())
     if args.classifier_use_fp16:
         classifier.convert_to_fp16()
     classifier.eval()
@@ -70,7 +70,7 @@ def main():
     while len(all_images) * args.batch_size < args.num_samples:
         model_kwargs = {}
         classes = th.randint(
-            low=0, high=NUM_CLASSES, size=(args.batch_size,), device=dist_util.dev()
+            low=0, high=NUM_CLASSES, size=(args.batch_size,), device=dist.get_rank()
         )
         model_kwargs["y"] = classes
         sample_fn = (
@@ -82,7 +82,7 @@ def main():
             clip_denoised=args.clip_denoised,
             model_kwargs=model_kwargs,
             cond_fn=cond_fn,
-            device=dist_util.dev(),
+            device=dist.get_rank(),
         )
         sample = ((sample + 1) * 127.5).clamp(0, 255).to(th.uint8)
         sample = sample.permute(0, 2, 3, 1)

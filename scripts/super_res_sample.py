@@ -33,7 +33,7 @@ def main():
     model.load_state_dict(
         dist_util.load_state_dict(args.model_path, map_location="cpu")
     )
-    model.to(dist_util.dev())
+    model.to(dist.get_rank())
     if args.use_fp16:
         model.convert_to_fp16()
     model.eval()
@@ -45,7 +45,7 @@ def main():
     all_images = []
     while len(all_images) * args.batch_size < args.num_samples:
         model_kwargs = next(data)
-        model_kwargs = {k: v.to(dist_util.dev()) for k, v in model_kwargs.items()}
+        model_kwargs = {k: v.to(dist.get_rank()) for k, v in model_kwargs.items()}
         sample = diffusion.p_sample_loop(
             model,
             (args.batch_size, 3, args.large_size, args.large_size),
